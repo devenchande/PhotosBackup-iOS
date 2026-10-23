@@ -115,6 +115,7 @@ private extension MediaSource {
         case .picked: return nil
         case .livePhotoMotion(let identifier): return UploadQueue.motionKeyPrefix + identifier
         case .editBase(let identifier): return UploadQueue.editBaseKeyPrefix + identifier
+        case .folderFile(let folderID, let relativePath): return "folder:\(folderID)/\(relativePath)"
         }
     }
 

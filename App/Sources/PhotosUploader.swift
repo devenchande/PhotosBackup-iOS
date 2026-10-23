@@ -279,9 +279,16 @@ struct PhotosUploader {
             // Filed before the item counts as backed up: if this fails the
             // item is retried, and the retry's hash lookup finds the copy
             // already uploaded and files that.
-            guard options.filesIntoAlbums, case .asset(let identifier) = source,
-                  !outcome.mediaKey.isEmpty else { return outcome }
-            let names = GoogleAlbumFiler.localAlbumNames(forAssetIdentifier: identifier)
+            guard options.filesIntoAlbums, !outcome.mediaKey.isEmpty else { return outcome }
+            let names: [String]
+            switch source {
+            case .asset(let identifier):
+                names = GoogleAlbumFiler.localAlbumNames(forAssetIdentifier: identifier)
+            case .folderFile(let folderID, let relativePath):
+                names = PickedFolderStore.shared.albumName(folderID: folderID, relativePath: relativePath).map { [$0] } ?? []
+            default:
+                return outcome
+            }
             guard !names.isEmpty, let client = await client() else { return outcome }
             await emit(.state(.addingToAlbum))
             let account = await client.accountEmail
