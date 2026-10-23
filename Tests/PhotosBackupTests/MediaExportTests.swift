@@ -1,4 +1,5 @@
 import Photos
+import UIKit
 import XCTest
 @testable import PhotosBackup
 
@@ -140,5 +141,19 @@ final class MediaExportTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: kept.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.path))
         await exporter.purge()
+    }
+
+    /// The gate that keeps Portrait originals to photos with depth: a plain
+    /// image, and a file that is not an image at all, both read as no depth,
+    /// so neither is uploaded as a second item.
+    func testAPhotoWithoutDepthIsNotAPortraitOriginal() throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        let photo = try scratch(try XCTUnwrap(image.jpegData(compressionQuality: 0.9)), named: "plain.jpg")
+        XCTAssertFalse(MediaExporter.hasPortraitDepth(at: photo))
+        let notAnImage = try scratch(Data("not an image".utf8), named: "notes.jpg")
+        XCTAssertFalse(MediaExporter.hasPortraitDepth(at: notAnImage))
     }
 }

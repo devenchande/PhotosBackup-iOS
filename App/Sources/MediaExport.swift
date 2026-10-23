@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import ImageIO
 import Photos
 import PhotosUI
 import SwiftUI
@@ -28,6 +29,13 @@ enum MediaSource: Equatable, Sendable {
     /// this version (seen on device on 2026-09-19); the finished edit and the
     /// original do not count.
     case editBase(localIdentifier: String)
+    /// The camera's original (`.photo`) of an edited photo that carries depth
+    /// data: a Portrait photo, or one the camera captured depth for so Portrait
+    /// can be turned on later. The asset's own row uploads the edit, which is
+    /// what the Google Photos app checks, and an edit has the blur rendered in.
+    /// Only the original keeps the depth map that lets Apple Photos change the
+    /// focus and depth again after the file is downloaded.
+    case portraitOriginal(localIdentifier: String)
     /// A photo or video inside a folder picked from the Files app, outside
     /// the photo library: the folder's `PickedFolderStore` id and the file's
     /// path inside it. Copied into staging at export time, while the folder's
@@ -67,6 +75,8 @@ actor MediaExporter {
         case liveOnly
         case noMotion
         case noEditBase
+        case notEdited
+        case noDepth
         case iCloudDownloadRequired
         var errorDescription: String? {
             switch self {
@@ -75,6 +85,8 @@ actor MediaExporter {
             case .liveOnly: return "That item is a Live Photo motion track, which this release does not upload."
             case .noMotion: return "That Live Photo has no motion to back up."
             case .noEditBase: return "That photo has no Google Photos edit to back up the base of."
+            case .notEdited: return "That item is not edited, so its original is already what is backed up."
+            case .noDepth: return "That photo has no depth data, so there is no Portrait original to back up."
             case .iCloudDownloadRequired: return "That item is only in iCloud. It will continue when the app is open."
             case .unreadable(let detail): return "Could not read that item: \(detail)"
             }
@@ -162,6 +174,8 @@ actor MediaExporter {
             return try await exportMotion(identifier, allowsNetworkAccess: allowsNetworkAccess)
         case .editBase(let identifier):
             return try await exportEditBase(identifier, allowsNetworkAccess: allowsNetworkAccess)
+        case .portraitOriginal(let identifier):
+            return try await exportPortraitOriginal(identifier, allowsNetworkAccess: allowsNetworkAccess)
         case .folderFile(let folderID, let relativePath):
             // Detached: the coordinated read blocks, for as long as an iCloud
             // Drive download takes, and must not hold up this actor.
@@ -306,6 +320,47 @@ actor MediaExporter {
         let original = resources.first { $0.type == .photo }?.originalFilename
         let filename = Self.uploadFilename(original: original, rendition: base.originalFilename)
         return try await stage(base, as: filename, of: asset, allowsNetworkAccess: allowsNetworkAccess)
+    }
+
+    /// Edited photos whose original may carry depth. Cheap, from the asset
+    /// alone: PhotoKit has no "has depth" property, and only some photos with
+    /// depth are marked `.photoDepthEffect` (a photo the camera captured depth
+    /// for, with Portrait left off, is not), so the export reads the file to
+    /// decide. An unedited photo needs nothing: its own row uploads the
+    /// original, depth included.
+    static func mayHavePortraitDepth(_ asset: PHAsset) -> Bool {
+        asset.mediaType == .image && asset.hasAdjustments
+    }
+
+    /// Whether an image file carries the depth Portrait editing needs: a
+    /// disparity or depth map as auxiliary data. Reads only the container's
+    /// item metadata, not the pixels.
+    static func hasPortraitDepth(at url: URL) -> Bool {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return false }
+        return [kCGImageAuxiliaryDataTypeDisparity, kCGImageAuxiliaryDataTypeDepth].contains { type in
+            CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, type) != nil
+        }
+    }
+
+    /// The camera's file for an edited photo, under its own name, when it
+    /// carries depth. A photo without depth settles without an upload, so only
+    /// Portrait-capable originals reach Google. So does one whose edit was
+    /// reverted since it was queued: its own row now uploads this file.
+    private func exportPortraitOriginal(_ identifier: String, allowsNetworkAccess: Bool) async throws -> ExportedMedia {
+        guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject else {
+            throw Failure.missingAsset
+        }
+        guard Self.mayHavePortraitDepth(asset) else { throw Failure.notEdited }
+        guard let original = PHAssetResource.assetResources(for: asset).first(where: { $0.type == .photo }) else {
+            throw Failure.noResource
+        }
+        let media = try await stage(original, as: original.originalFilename, of: asset,
+                                    allowsNetworkAccess: allowsNetworkAccess)
+        guard Self.hasPortraitDepth(at: media.url) else {
+            discard(media)
+            throw Failure.noDepth
+        }
+        return media
     }
 
     /// `adjustmentFormatIdentifier` from an asset's adjustment plist, or nil.

@@ -115,12 +115,18 @@ private extension MediaSource {
         case .picked: return nil
         case .livePhotoMotion(let identifier): return UploadQueue.motionKeyPrefix + identifier
         case .editBase(let identifier): return UploadQueue.editBaseKeyPrefix + identifier
+        case .portraitOriginal(let identifier): return UploadQueue.portraitOriginalKeyPrefix + identifier
         case .folderFile(let folderID, let relativePath): return "folder:\(folderID)/\(relativePath)"
         }
     }
 
     var isEditBase: Bool {
         if case .editBase = self { return true }
+        return false
+    }
+
+    var isPortraitOriginal: Bool {
+        if case .portraitOriginal = self { return true }
         return false
     }
 
@@ -628,11 +634,15 @@ final class UploadQueue: ObservableObject {
     var completedSourceCount: Int {
         completedSourceKeys.count - completedSourceKeys.lazy.filter {
             $0.hasPrefix(Self.motionKeyPrefix) || $0.hasPrefix(Self.editBaseKeyPrefix)
+                || $0.hasPrefix(Self.portraitOriginalKeyPrefix)
         }.count
     }
 
     /// Ledger prefix of a Google Photos edit's base version, keyed by asset.
     nonisolated static let editBaseKeyPrefix = "editbase:"
+
+    /// Ledger prefix of an edited asset's unedited original, keyed by asset.
+    nonisolated static let portraitOriginalKeyPrefix = "portrait:"
 
     /// Ledger prefix of a Live Photo motion, keyed by its asset identifier.
     nonisolated static let motionKeyPrefix = "motion:"
@@ -1273,6 +1283,7 @@ final class UploadQueue: ObservableObject {
             let interruptions = item.interruptedPreparations > 0 ? item.interruptedPreparations : nil
             let motion: Bool? = item.source.isLivePhotoMotion ? true : nil
             let editBase: Bool? = item.source.isEditBase ? true : nil
+            let portraitOriginal: Bool? = item.source.isPortraitOriginal ? true : nil
             switch item.state {
             case .alreadyBackedUp, .done:
                 return nil
@@ -1282,20 +1293,23 @@ final class UploadQueue: ObservableObject {
                 return PersistedUploadItem(id: item.id, source: source, name: item.name,
                                            byteCount: item.byteCount, attempts: item.attempts,
                                            failureReason: nil, failureRetryable: false,
-                                           checkpoint: nil, cancelled: true, motion: motion, editBase: editBase)
+                                           checkpoint: nil, cancelled: true, motion: motion, editBase: editBase,
+                                           portraitOriginal: portraitOriginal)
             case .failed(let reason, let retryable):
                 return PersistedUploadItem(id: item.id, source: source, name: item.name,
                                            byteCount: item.byteCount, attempts: item.attempts,
                                            failureReason: reason, failureRetryable: retryable,
                                            checkpoint: item.checkpoint,
-                                           interruptedPreparations: interruptions, motion: motion, editBase: editBase)
+                                           interruptedPreparations: interruptions, motion: motion, editBase: editBase,
+                                           portraitOriginal: portraitOriginal)
             default:
                 // Working and retry-delay states intentionally restore queued.
                 return PersistedUploadItem(id: item.id, source: source, name: item.name,
                                            byteCount: item.byteCount, attempts: item.attempts,
                                            failureReason: nil, failureRetryable: false,
                                            checkpoint: item.checkpoint,
-                                           interruptedPreparations: interruptions, motion: motion, editBase: editBase)
+                                           interruptedPreparations: interruptions, motion: motion, editBase: editBase,
+                                           portraitOriginal: portraitOriginal)
             }
         }
         let snapshot = UploadQueueSnapshot(

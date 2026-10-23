@@ -695,6 +695,44 @@ final class UploadQueueTests: XCTestCase {
                                                       .livePhotoMotion(localIdentifier: "live-1")])
     }
 
+    /// An edited item's original backs up after it as a follow-up, and adds to
+    /// a photo already counted rather than counting as one of its own.
+    func testAPortraitPhotoQueuesItsOriginalWithoutCountingIt() async {
+        let queue = makeQueue(WorkerScript([]), maxConcurrent: 1)
+        queue.followUpSources = { source in
+            guard case .asset(let identifier) = source, identifier == "edited-1" else { return [] }
+            return [.portraitOriginal(localIdentifier: identifier)]
+        }
+        queue.enqueue([.asset(localIdentifier: "edited-1"), .asset(localIdentifier: "plain-1")])
+        await settle(queue) { queue.items.count == 3 && queue.items.allSatisfy { $0.state == .done } }
+        XCTAssertEqual(queue.items.last?.source, .portraitOriginal(localIdentifier: "edited-1"))
+        XCTAssertEqual(queue.completedSourceCount, 2)
+        XCTAssertTrue(queue.completedSourceKeys.contains(UploadQueue.portraitOriginalKeyPrefix + "edited-1"))
+    }
+
+    /// Each kind of follow-up row restores as itself. An original restored as
+    /// an edit base would upload the wrong file; as a plain asset it would
+    /// collide with the edit's own dedup key and never back up.
+    func testAPortraitOriginalRowRestoresAsAPortraitOriginalRow() async {
+        let persistence = MemoryUploadQueuePersistence()
+        let first = UploadQueue(worker: WorkerScript([]).worker(), maxConcurrent: 1, persistence: persistence)
+        first.setNetworkAccess(allowed: false, pauseReason: "Waiting")
+        first.activateAccount("person@gmail.com")
+        first.enqueue([.portraitOriginal(localIdentifier: "edited-1"), .editBase(localIdentifier: "edited-2")],
+                      skippingExisting: true)
+
+        let stored = persistence.snapshot?.items ?? []
+        XCTAssertEqual(stored.map(\.source), [.asset("edited-1"), .asset("edited-2")])
+        XCTAssertEqual(stored.map(\.portraitOriginal), [true, nil])
+        XCTAssertEqual(stored.map(\.editBase), [nil, true])
+
+        let restored = UploadQueue(worker: WorkerScript([]).worker(), maxConcurrent: 1, persistence: persistence)
+        restored.setNetworkAccess(allowed: false, pauseReason: "Waiting")
+        restored.activateAccount("person@gmail.com")
+        XCTAssertEqual(restored.items.map(\.source), [.portraitOriginal(localIdentifier: "edited-1"),
+                                                      .editBase(localIdentifier: "edited-2")])
+    }
+
     func testAMotionCheckpointKeepsItsStillHash() throws {
         let checkpoint = UploadCheckpoint(filePath: "/tmp/staged/IMG.MOV", filename: "IMG.MOV",
                                           modified: Date(timeIntervalSince1970: 100), byteCount: 123,
