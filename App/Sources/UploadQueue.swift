@@ -117,6 +117,7 @@ private extension MediaSource {
         case .editBase(let identifier): return UploadQueue.editBaseKeyPrefix + identifier
         case .portraitOriginal(let identifier): return UploadQueue.portraitOriginalKeyPrefix + identifier
         case .folderFile(let folderID, let relativePath): return "folder:\(folderID)/\(relativePath)"
+        case .videoOriginal(let identifier): return UploadQueue.videoOriginalKeyPrefix + identifier
         }
     }
 
@@ -127,6 +128,11 @@ private extension MediaSource {
 
     var isPortraitOriginal: Bool {
         if case .portraitOriginal = self { return true }
+        return false
+    }
+
+    var isVideoOriginal: Bool {
+        if case .videoOriginal = self { return true }
         return false
     }
 
@@ -628,13 +634,14 @@ final class UploadQueue: ObservableObject {
     /// set, so re-verifying an item that is already in the cloud re-records the
     /// same key and the total does not move.
     ///
-    /// Live Photo motions and Google Photos edit bases are recorded in the same
+    /// Live Photo motions, Google Photos edit bases and video originals are recorded in the same
     /// ledger under their own keys but are not counted: they add to a photo
     /// already counted here.
     var completedSourceCount: Int {
         completedSourceKeys.count - completedSourceKeys.lazy.filter {
             $0.hasPrefix(Self.motionKeyPrefix) || $0.hasPrefix(Self.editBaseKeyPrefix)
                 || $0.hasPrefix(Self.portraitOriginalKeyPrefix)
+                || $0.hasPrefix(Self.videoOriginalKeyPrefix)
         }.count
     }
 
@@ -643,6 +650,8 @@ final class UploadQueue: ObservableObject {
 
     /// Ledger prefix of an edited asset's unedited original, keyed by asset.
     nonisolated static let portraitOriginalKeyPrefix = "portrait:"
+    /// Ledger prefix of an edited video's original, keyed by asset.
+    nonisolated static let videoOriginalKeyPrefix = "videooriginal:"
 
     /// Ledger prefix of a Live Photo motion, keyed by its asset identifier.
     nonisolated static let motionKeyPrefix = "motion:"
@@ -1284,6 +1293,7 @@ final class UploadQueue: ObservableObject {
             let motion: Bool? = item.source.isLivePhotoMotion ? true : nil
             let editBase: Bool? = item.source.isEditBase ? true : nil
             let portraitOriginal: Bool? = item.source.isPortraitOriginal ? true : nil
+            let videoOriginal: Bool? = item.source.isVideoOriginal ? true : nil
             switch item.state {
             case .alreadyBackedUp, .done:
                 return nil
@@ -1294,14 +1304,16 @@ final class UploadQueue: ObservableObject {
                                            byteCount: item.byteCount, attempts: item.attempts,
                                            failureReason: nil, failureRetryable: false,
                                            checkpoint: nil, cancelled: true, motion: motion, editBase: editBase,
-                                           portraitOriginal: portraitOriginal)
+                                           portraitOriginal: portraitOriginal,
+                                           videoOriginal: videoOriginal)
             case .failed(let reason, let retryable):
                 return PersistedUploadItem(id: item.id, source: source, name: item.name,
                                            byteCount: item.byteCount, attempts: item.attempts,
                                            failureReason: reason, failureRetryable: retryable,
                                            checkpoint: item.checkpoint,
                                            interruptedPreparations: interruptions, motion: motion, editBase: editBase,
-                                           portraitOriginal: portraitOriginal)
+                                           portraitOriginal: portraitOriginal,
+                                           videoOriginal: videoOriginal)
             default:
                 // Working and retry-delay states intentionally restore queued.
                 return PersistedUploadItem(id: item.id, source: source, name: item.name,
@@ -1309,7 +1321,8 @@ final class UploadQueue: ObservableObject {
                                            failureReason: nil, failureRetryable: false,
                                            checkpoint: item.checkpoint,
                                            interruptedPreparations: interruptions, motion: motion, editBase: editBase,
-                                           portraitOriginal: portraitOriginal)
+                                           portraitOriginal: portraitOriginal,
+                                           videoOriginal: videoOriginal)
             }
         }
         let snapshot = UploadQueueSnapshot(

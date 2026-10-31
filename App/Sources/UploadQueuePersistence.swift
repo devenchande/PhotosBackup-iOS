@@ -11,11 +11,11 @@ enum PersistedMediaSource: Codable, Equatable, Sendable {
 
     init?(_ source: MediaSource) {
         switch source {
-        // Motion and edit-base rows are stored as their asset plus a flag on
+        // Motion, edit-base and video-original rows are stored as their asset plus a flag on
         // `PersistedUploadItem`, so a snapshot stays readable by builds that
         // predate them.
         case .asset(let identifier), .livePhotoMotion(let identifier), .editBase(let identifier),
-             .portraitOriginal(let identifier):
+             .portraitOriginal(let identifier), .videoOriginal(let identifier):
             self = .asset(identifier)
         case .file(let url): self = .file(url.standardizedFileURL.path)
         case .folderFile(let folderID, let relativePath): self = .folderFile(folderID: folderID, relativePath: relativePath)
@@ -77,12 +77,14 @@ struct PersistedUploadItem: Codable, Equatable, Sendable {
     /// True for an edited asset's original, stored the same way. Never set
     /// together with `motion` or `editBase`.
     let portraitOriginal: Bool?
+    /// True for an edited video's original row, stored the same way.
+    let videoOriginal: Bool?
 
     init(id: UUID, source: PersistedMediaSource, name: String, byteCount: Int64,
          attempts: Int, failureReason: String?, failureRetryable: Bool,
          checkpoint: UploadCheckpoint? = nil, cancelled: Bool? = nil,
          interruptedPreparations: Int? = nil, motion: Bool? = nil, editBase: Bool? = nil,
-         portraitOriginal: Bool? = nil) {
+         portraitOriginal: Bool? = nil, videoOriginal: Bool? = nil) {
         self.id = id
         self.source = source
         self.name = name
@@ -96,6 +98,7 @@ struct PersistedUploadItem: Codable, Equatable, Sendable {
         self.motion = motion
         self.editBase = editBase
         self.portraitOriginal = portraitOriginal
+        self.videoOriginal = videoOriginal
     }
 
     var mediaSource: MediaSource {
@@ -103,6 +106,7 @@ struct PersistedUploadItem: Codable, Equatable, Sendable {
             if motion == true { return .livePhotoMotion(localIdentifier: identifier) }
             if editBase == true { return .editBase(localIdentifier: identifier) }
             if portraitOriginal == true { return .portraitOriginal(localIdentifier: identifier) }
+            if videoOriginal == true { return .videoOriginal(localIdentifier: identifier) }
         }
         return source.mediaSource
     }
