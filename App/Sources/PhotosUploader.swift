@@ -301,7 +301,7 @@ struct PhotosUploader {
             guard options.filesIntoAlbums, !outcome.mediaKey.isEmpty else { return outcome }
             let names: [String]
             switch source {
-            case .asset(let identifier), .portraitOriginal(let identifier):
+            case .asset(let identifier), .portraitOriginal(let identifier), .videoOriginal(let identifier):
                 names = GoogleAlbumFiler.localAlbumNames(forAssetIdentifier: identifier)
             case .folderFile(let folderID, let relativePath):
                 names = PickedFolderStore.shared.albumName(folderID: folderID, relativePath: relativePath).map { [$0] } ?? []

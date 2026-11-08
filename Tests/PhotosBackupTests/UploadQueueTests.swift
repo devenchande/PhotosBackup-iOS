@@ -673,6 +673,18 @@ final class UploadQueueTests: XCTestCase {
         XCTAssertTrue(queue.completedSourceKeys.contains(UploadQueue.editBaseKeyPrefix + "edited-1"))
     }
 
+    /// Off unless turned on: it uploads a second copy of every edited video,
+    /// including those already backed up, so an update must not start it.
+    func testVideoOriginalsAreOffUntilTurnedOn() throws {
+        let suite = "video-originals-default-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = BackupPreferences(defaults: defaults)
+        XCTAssertFalse(first.backUpVideoOriginals)
+        first.backUpVideoOriginals = true
+        XCTAssertTrue(BackupPreferences(defaults: defaults).backUpVideoOriginals)
+    }
+
     /// An edited video also backs up its original, which adds to a video already
     /// counted, and the row restores as one.
     func testAnEditedVideoQueuesItsOriginalWithoutCountingIt() async {

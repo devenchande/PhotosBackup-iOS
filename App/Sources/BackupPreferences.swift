@@ -35,6 +35,7 @@ final class BackupPreferences: ObservableObject {
         static let backUpLivePhotoMotion = "backup.livePhotoMotion"
         static let albumsFromLibrary = "backup.albumsFromLibrary"
         static let backUpPortraitOriginals = "backup.portraitOriginals"
+        static let backUpVideoOriginals = "backup.videoOriginals"
     }
 
     @Published var selectedAlbumIDs: Set<String> { didSet { saveAlbumIDs() } }
@@ -47,6 +48,7 @@ final class BackupPreferences: ObservableObject {
     @Published var backUpLivePhotoMotion: Bool { didSet { defaults.set(backUpLivePhotoMotion, forKey: Key.backUpLivePhotoMotion) } }
     @Published var albumsFromLibrary: Bool { didSet { defaults.set(albumsFromLibrary, forKey: Key.albumsFromLibrary) } }
     @Published var backUpPortraitOriginals: Bool { didSet { defaults.set(backUpPortraitOriginals, forKey: Key.backUpPortraitOriginals) } }
+    @Published var backUpVideoOriginals: Bool { didSet { defaults.set(backUpVideoOriginals, forKey: Key.backUpVideoOriginals) } }
 
     private let defaults: UserDefaults
 
@@ -72,6 +74,10 @@ final class BackupPreferences: ObservableObject {
         // Off until asked for: it adds a second item to Google Photos for every
         // edited photo with depth, including those already backed up.
         backUpPortraitOriginals = defaults.bool(forKey: Key.backUpPortraitOriginals)
+        // Off until asked for: every edited video, including each one already
+        // backed up, would upload its original as a second item, gigabytes on
+        // a library with many Cinematic videos.
+        backUpVideoOriginals = defaults.bool(forKey: Key.backUpVideoOriginals)
     }
 
     func toggle(albumID: String) {

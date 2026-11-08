@@ -207,6 +207,10 @@ final class AutomaticBackupCoordinator: ObservableObject {
         Task { await queuePortraitOriginals() }
     }
 
+    func videoOriginalsPreferenceDidChange() {
+        Task { await queueVideoOriginals() }
+    }
+
     /// What else has to back up once this row's source is in the account: a
     /// Live Photo's motion, which is committed onto the still, the version a
     /// Google Photos edit was applied on, which that app checks, and an edited
@@ -233,7 +237,7 @@ final class AutomaticBackupCoordinator: ObservableObject {
         if MediaExporter.hasEditBase(asset) {
             followUps.append(.editBase(localIdentifier: identifier))
         }
-        if MediaExporter.hasVideoOriginal(asset) {
+        if preferences.backUpVideoOriginals, MediaExporter.hasVideoOriginal(asset) {
             followUps.append(.videoOriginal(localIdentifier: identifier))
         }
         return followUps
@@ -268,10 +272,11 @@ final class AutomaticBackupCoordinator: ObservableObject {
     }
 
     /// Queue the original of every edited video remembered as backed up whose
-    /// original is not recorded yet. Runs at each start, like the motion scan:
-    /// the enqueue skips rows already tracked, so this only adds what is missing.
+    /// original is not recorded yet. Runs at each start while Back Up Video
+    /// Originals is on, like the motion scan: the enqueue skips rows already
+    /// tracked, so this only adds what is missing.
     private func queueVideoOriginals() async {
-        guard let email = account.status.email, MediaLibrary.isReadable,
+        guard preferences.backUpVideoOriginals, let email = account.status.email, MediaLibrary.isReadable,
               queue.persistenceWarning == nil else { return }
         let completed = queue.completedSourceKeys
         let identifiers = completed.compactMap { key -> String? in
@@ -288,8 +293,8 @@ final class AutomaticBackupCoordinator: ObservableObject {
             }
             return (assets.count, found)
         }.value
-        // The library read runs off the main actor; the account can change meanwhile.
-        guard account.status.email == email, !originals.isEmpty else { return }
+        // The library read runs off the main actor; the account or the setting can change meanwhile.
+        guard account.status.email == email, preferences.backUpVideoOriginals, !originals.isEmpty else { return }
         let queued = queue.enqueue(originals, skippingExisting: true).count
         DiagnosticEventLog.shared.record(
             "queue",
