@@ -701,10 +701,33 @@ final class AutomaticBackupCoordinator: ObservableObject {
     /// Google already holds the files, so existing backups are committed under
     /// the storage settings in force now.
     func reuploadSelectedAlbums() async -> ManualRunOutcome {
+        // The button is hidden while Allow Re-upload is off; this keeps any
+        // other caller from starting one.
+        guard preferences.allowReupload else { return noteManual(.reupload, .nothingToDo) }
         guard !preferences.selectedAlbumIDs.isEmpty else { return noteManual(.reupload, .noAlbumsSelected) }
         await albums.refresh()
         guard albums.canRead else { return noteManual(.reupload, .noLibraryAccess) }
         let sources = await albums.sources(for: preferences.selectedAlbumIDs)
+        guard !sources.isEmpty else { return noteManual(.reupload, .nothingToDo) }
+        // Same reason as Re-check: a failed row would otherwise block its source.
+        queue.retryRetryableFailures()
+        let total = queue.reupload(sources)
+        guard total > 0 else { return noteManual(.reupload, .nothingToDo) }
+        startForegroundRun(sources, source: .reupload)
+        return .reuploading(count: total)
+    }
+
+    /// "Re-upload a Folder": the same forced upload for a folder picked from
+    /// the Files app. Its files are queued with the duplicate check skipped,
+    /// and files already backed up from it are forgotten first, so each one is
+    /// uploaded and committed again under the current settings. The folder is
+    /// remembered like one picked from Home, so a re-pick keeps its keys.
+    func reuploadFolder(_ folderURL: URL) async throws -> ManualRunOutcome {
+        guard preferences.allowReupload else { return noteManual(.reupload, .nothingToDo) }
+        // Walks the whole tree, so it runs off the main actor.
+        let sources = try await Task.detached(priority: .userInitiated) {
+            try FolderScanner.sources(inPickedFolder: folderURL)
+        }.value
         guard !sources.isEmpty else { return noteManual(.reupload, .nothingToDo) }
         // Same reason as Re-check: a failed row would otherwise block its source.
         queue.retryRetryableFailures()

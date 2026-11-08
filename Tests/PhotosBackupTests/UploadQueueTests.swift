@@ -801,6 +801,35 @@ final class UploadQueueTests: XCTestCase {
         XCTAssertEqual(skipped.calls, [false, true])
     }
 
+    /// Re-upload reaches folder files the same way: a file backed up from a
+    /// picked folder is queued again with its duplicate check skipped.
+    func testReuploadSkipsTheDuplicateCheckForAFolderFile() async {
+        let skipped = SkipRecorder()
+        let worker: UploadWorker = { _, _, _, options, _ in
+            skipped.record(options.skipsDuplicateCheck)
+            return .alreadyBackedUp(mediaKey: "KEY")
+        }
+        let queue = UploadQueue(worker: worker, maxConcurrent: 1)
+        let file = MediaSource.folderFile(folderID: "F", relativePath: "Day 1/b.mov")
+        queue.enqueue([file], skippingExisting: true)
+        await settle(queue) { queue.items.first?.state == .alreadyBackedUp }
+
+        XCTAssertEqual(queue.reupload([file]), 1)
+        await settle(queue) { queue.items.count == 1 && queue.items.first?.state == .alreadyBackedUp }
+        XCTAssertEqual(skipped.calls, [false, true])
+    }
+
+    /// Off unless turned on: re-upload costs a full backup's time and data.
+    func testReuploadIsHiddenUntilAllowed() throws {
+        let suite = "allow-reupload-default-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = BackupPreferences(defaults: defaults)
+        XCTAssertFalse(first.allowReupload)
+        first.allowReupload = true
+        XCTAssertTrue(BackupPreferences(defaults: defaults).allowReupload)
+    }
+
     /// A re-upload row that outlives the process still skips the check.
     func testAReuploadRowRestoresAsOne() async {
         let persistence = MemoryUploadQueuePersistence()

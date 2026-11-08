@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject private var account: PhotosAccount
@@ -14,6 +15,9 @@ struct SettingsView: View {
     @State private var verifyMessage: String?
     @State private var isVerifying = false
     @State private var confirmReupload = false
+    @State private var showReuploadFolderPicker = false
+    /// The folder picked for re-upload, held until the user confirms it.
+    @State private var reuploadFolder: URL?
     private let gpmcURL = URL(string: "https://github.com/xob0t/gpmc")!
 
     var body: some View {
@@ -156,15 +160,35 @@ struct SettingsView: View {
                 }
             }
             .disabled(!canVerify)
-            Button("Re-upload Selected Albums") { confirmReupload = true }
-                .disabled(!canVerify)
-                .confirmationDialog("Upload the selected albums again?", isPresented: $confirmReupload,
-                                    titleVisibility: .visible) {
-                    Button("Re-upload") { runReupload() }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Every photo and video in the selected albums is uploaded again, including ones already in Google Photos. This takes as long and uses as much data as the first backup.")
-                }
+            Toggle("Allow Re-upload", isOn: $preferences.allowReupload)
+            if preferences.allowReupload {
+                Button("Re-upload Selected Albums") { confirmReupload = true }
+                    .disabled(!canVerify)
+                    .confirmationDialog("Upload the selected albums again?", isPresented: $confirmReupload,
+                                        titleVisibility: .visible) {
+                        Button("Re-upload") { runReupload() }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Every photo and video in the selected albums is uploaded again, including ones already in Google Photos. This takes as long and uses as much data as the first backup.")
+                    }
+                Button("Re-upload a Folder…") { showReuploadFolderPicker = true }
+                    .disabled(!canReuploadFolder)
+                    .fileImporter(isPresented: $showReuploadFolderPicker, allowedContentTypes: [.folder]) { result in
+                        switch result {
+                        case .success(let url): reuploadFolder = url
+                        case .failure(let error): verifyMessage = "Could not open that folder: \(error.localizedDescription)"
+                        }
+                    }
+                    .confirmationDialog("Upload this folder again?",
+                                        isPresented: Binding(get: { reuploadFolder != nil },
+                                                             set: { if !$0 { reuploadFolder = nil } }),
+                                        titleVisibility: .visible, presenting: reuploadFolder) { folder in
+                        Button("Re-upload") { runReuploadFolder(folder) }
+                        Button("Cancel", role: .cancel) {}
+                    } message: { folder in
+                        Text("Every photo and video in “\(folder.lastPathComponent)” and its subfolders is uploaded again, including ones already in Google Photos. This takes as long and uses as much data as the first backup.")
+                    }
+            }
             if let verifyMessage {
                 Text(verifyMessage)
                     .font(.footnote)
@@ -174,7 +198,7 @@ struct SettingsView: View {
         } header: {
             Text("Re-check")
         } footer: {
-            Text("Re-check compares your selected albums against Google Photos again. Items still in the cloud finish quickly; anything deleted there is queued for upload again.\n\nRe-upload sends every item again using your current Storage Saver and storage quota settings. Google Photos may keep the copy it already has.")
+            Text("Re-check compares your selected albums against Google Photos again. Items still in the cloud finish quickly; anything deleted there is queued for upload again.\n\nAllow Re-upload shows two buttons that send every item in your selected albums, or in a folder from the Files app, again using your current Storage Saver and storage quota settings, even where Google Photos already has it. It is meant for photos that use your Google storage because they were uploaded another way. Google Photos may keep the copy it already has, so try a small album or folder first and compare your storage before and after.")
         }
     }
 
@@ -192,6 +216,11 @@ struct SettingsView: View {
         account.status.isUsable && !isVerifying && !preferences.selectedAlbumIDs.isEmpty
     }
 
+    /// A folder needs no album selection.
+    private var canReuploadFolder: Bool {
+        account.status.isUsable && !isVerifying
+    }
+
     private func runVerification() {
         guard canVerify else { return }
         isVerifying = true
@@ -200,6 +229,23 @@ struct SettingsView: View {
             let outcome = await automaticBackup.reverifySelectedAlbums()
             isVerifying = false
             verifyMessage = DashboardView.message(for: outcome)
+        }
+    }
+
+    private func runReuploadFolder(_ folder: URL) {
+        guard canReuploadFolder else { return }
+        isVerifying = true
+        verifyMessage = nil
+        Task {
+            do {
+                let outcome = try await automaticBackup.reuploadFolder(folder)
+                verifyMessage = outcome == .nothingToDo
+                    ? "No photos or videos found in “\(folder.lastPathComponent)”."
+                    : DashboardView.message(for: outcome)
+            } catch {
+                verifyMessage = "Could not read that folder: \(error.localizedDescription)"
+            }
+            isVerifying = false
         }
     }
 

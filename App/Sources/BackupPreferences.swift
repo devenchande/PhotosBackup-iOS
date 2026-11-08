@@ -36,6 +36,7 @@ final class BackupPreferences: ObservableObject {
         static let albumsFromLibrary = "backup.albumsFromLibrary"
         static let backUpPortraitOriginals = "backup.portraitOriginals"
         static let backUpVideoOriginals = "backup.videoOriginals"
+        static let allowReupload = "backup.allowReupload"
     }
 
     @Published var selectedAlbumIDs: Set<String> { didSet { saveAlbumIDs() } }
@@ -49,6 +50,7 @@ final class BackupPreferences: ObservableObject {
     @Published var albumsFromLibrary: Bool { didSet { defaults.set(albumsFromLibrary, forKey: Key.albumsFromLibrary) } }
     @Published var backUpPortraitOriginals: Bool { didSet { defaults.set(backUpPortraitOriginals, forKey: Key.backUpPortraitOriginals) } }
     @Published var backUpVideoOriginals: Bool { didSet { defaults.set(backUpVideoOriginals, forKey: Key.backUpVideoOriginals) } }
+    @Published var allowReupload: Bool { didSet { defaults.set(allowReupload, forKey: Key.allowReupload) } }
 
     private let defaults: UserDefaults
 
@@ -78,6 +80,10 @@ final class BackupPreferences: ObservableObject {
         // backed up, would upload its original as a second item, gigabytes on
         // a library with many Cinematic videos.
         backUpVideoOriginals = defaults.bool(forKey: Key.backUpVideoOriginals)
+        // Off until asked for: re-upload sends items Google already holds, as
+        // much time and data as the first backup, with no proof yet that Google
+        // re-counts their storage. Off, its buttons are hidden.
+        allowReupload = defaults.bool(forKey: Key.allowReupload)
     }
 
     func toggle(albumID: String) {

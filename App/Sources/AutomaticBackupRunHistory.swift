@@ -4,7 +4,7 @@ enum AutomaticBackupRunSource: String, Codable, Sendable {
     case foreground = "App open"
     case manual = "Back Up Now"
     case recheck = "Re-check Backups"
-    case reupload = "Re-upload Selected Albums"
+    case reupload = "Re-upload"
     case backgroundProcessing = "iOS background processing"
     case shortcut = "Shortcuts automation"
     case backgroundTransfer = "Background transfer completion"
