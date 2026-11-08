@@ -159,6 +159,7 @@ final class AutomaticBackupCoordinator: ObservableObject {
         await queueEditedVersionsOnce()
         await queueEditBasesOnce()
         await queueLivePhotoMotion()
+        await queuePortraitOriginals()
         applyNetworkPolicy()
         updateSchedule()
         runForegroundBackupIfNeeded()
@@ -192,6 +193,7 @@ final class AutomaticBackupCoordinator: ObservableObject {
             await queueEditedVersionsOnce()
             await queueEditBasesOnce()
             await queueLivePhotoMotion()
+            await queuePortraitOriginals()
         }
     }
 
@@ -199,9 +201,14 @@ final class AutomaticBackupCoordinator: ObservableObject {
         Task { await queueLivePhotoMotion() }
     }
 
+    func portraitOriginalsPreferenceDidChange() {
+        Task { await queuePortraitOriginals() }
+    }
+
     /// What else has to back up once this row's source is in the account: a
-    /// Live Photo's motion, which is committed onto the still, and the version
-    /// a Google Photos edit was applied on, which that app checks.
+    /// Live Photo's motion, which is committed onto the still, the version a
+    /// Google Photos edit was applied on, which that app checks, and an edited
+    /// photo's Portrait original when the user asked for it.
     ///
     /// Both answers come from one library fetch. This runs on the main actor
     /// as every row finishes, so a full-library backup pays for it once per
@@ -215,6 +222,9 @@ final class AutomaticBackupCoordinator: ObservableObject {
         var followUps: [MediaSource] = []
         if preferences.backUpLivePhotoMotion, asset.mediaSubtypes.contains(.photoLive) {
             followUps.append(.livePhotoMotion(localIdentifier: identifier))
+        }
+        if preferences.backUpPortraitOriginals, MediaExporter.mayHavePortraitDepth(asset) {
+            followUps.append(.portraitOriginal(localIdentifier: identifier))
         }
         // Reads the asset's resources, so it is left until last: it only runs
         // for an asset that carries an adjustment.
@@ -282,6 +292,43 @@ final class AutomaticBackupCoordinator: ObservableObject {
             DiagnosticEventLog.shared.record(
                 "queue",
                 "Queued the motion of \(queued) Live Photo\(queued == 1 ? "" : "s") already backed up as a still, so it plays as a Live Photo and Google Photos can free it"
+            )
+        }
+    }
+
+    /// Queue a Portrait-original check for every edited photo remembered as
+    /// backed up that has not had one, including those backed up before the
+    /// setting was turned on. Runs at each start, like the motion pass: the
+    /// enqueue skips rows already tracked or settled, so each photo is read
+    /// once. Only those with depth upload; originals Google already holds,
+    /// such as those earlier builds uploaded in place of the edit, settle on
+    /// the hash lookup.
+    func queuePortraitOriginals() async {
+        guard preferences.backUpPortraitOriginals, let email = account.status.email, MediaLibrary.isReadable,
+              queue.persistenceWarning == nil else { return }
+        let completed = queue.completedSourceKeys
+        let identifiers = completed.compactMap { key -> String? in
+            guard key.hasPrefix("asset:") else { return nil }
+            let identifier = String(key.dropFirst("asset:".count))
+            return completed.contains(UploadQueue.portraitOriginalKeyPrefix + identifier) ? nil : identifier
+        }
+        guard !identifiers.isEmpty else { return }
+        let originals = await Task.detached(priority: .utility) { () -> [MediaSource] in
+            var found: [MediaSource] = []
+            PHAsset.fetchAssets(withLocalIdentifiers: identifiers, options: nil).enumerateObjects { asset, _, _ in
+                if MediaExporter.mayHavePortraitDepth(asset) {
+                    found.append(.portraitOriginal(localIdentifier: asset.localIdentifier))
+                }
+            }
+            return found
+        }.value
+        // The library read runs off the main actor; the account or the setting can change meanwhile.
+        guard account.status.email == email, preferences.backUpPortraitOriginals, !originals.isEmpty else { return }
+        let queued = queue.enqueue(originals, skippingExisting: true).count
+        if queued > 0 {
+            DiagnosticEventLog.shared.record(
+                "queue",
+                "Queued \(queued) edited photo\(queued == 1 ? "" : "s") already backed up to check for a Portrait original with depth"
             )
         }
     }

@@ -134,6 +134,16 @@ struct PhotosUploader {
                     // the row rather than leave a failure nobody can act on.
                     DiagnosticEventLog.shared.record("upload", "A Live Photo had no motion left to back up, so its motion row finished without uploading")
                     return .alreadyBackedUp(mediaKey: "")
+                } catch MediaExporter.Failure.noDepth {
+                    // Most edited photos: nothing for Portrait editing to use.
+                    // Settled and remembered, so it is read once, not every launch.
+                    DiagnosticEventLog.shared.record("upload", "An edited photo had no depth data, so its Portrait original row finished without uploading")
+                    return .alreadyBackedUp(mediaKey: "")
+                } catch MediaExporter.Failure.notEdited {
+                    // The edit was reverted after this row was queued, so the
+                    // asset's own row now uploads the original. Settle the row.
+                    DiagnosticEventLog.shared.record("upload", "A photo was no longer edited, so its original row finished without uploading")
+                    return .alreadyBackedUp(mediaKey: "")
                 } catch MediaExporter.Failure.noEditBase {
                     // Stacked on an edit that is not the Google Photos app's, or
                     // since reverted: nothing to add. Settle the row.
@@ -161,6 +171,8 @@ struct PhotosUploader {
                     name = "\(media.filename) (Live Photo motion)"
                 } else if case .editBase = source {
                     name = "\(media.filename) (before Google Photos edit)"
+                } else if case .portraitOriginal = source {
+                    name = "\(media.filename) (Portrait original)"
                 } else {
                     name = media.filename
                 }
@@ -282,7 +294,7 @@ struct PhotosUploader {
             guard options.filesIntoAlbums, !outcome.mediaKey.isEmpty else { return outcome }
             let names: [String]
             switch source {
-            case .asset(let identifier):
+            case .asset(let identifier), .portraitOriginal(let identifier):
                 names = GoogleAlbumFiler.localAlbumNames(forAssetIdentifier: identifier)
             case .folderFile(let folderID, let relativePath):
                 names = PickedFolderStore.shared.albumName(folderID: folderID, relativePath: relativePath).map { [$0] } ?? []

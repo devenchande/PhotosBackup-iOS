@@ -100,6 +100,10 @@ struct PhotosBackupApp: App {
                     DiagnosticEventLog.shared.record("settings", "Add to Matching Albums turned \(value ? "on" : "off")")
                     queue.options.filesIntoAlbums = value
                 }
+                .onChange(of: preferences.backUpPortraitOriginals) { value in
+                    DiagnosticEventLog.shared.record("settings", "Back Up Portrait Originals turned \(value ? "on" : "off")")
+                    automaticBackup.portraitOriginalsPreferenceDidChange()
+                }
                 .onChange(of: preferences.backUpLivePhotoMotion) { value in
                     DiagnosticEventLog.shared.record("settings", "Back Up Live Photo Motion turned \(value ? "on" : "off")")
                     automaticBackup.livePhotoMotionPreferenceDidChange()

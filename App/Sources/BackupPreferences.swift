@@ -34,6 +34,7 @@ final class BackupPreferences: ObservableObject {
         static let useQuota = "backup.useQuota"
         static let backUpLivePhotoMotion = "backup.livePhotoMotion"
         static let albumsFromLibrary = "backup.albumsFromLibrary"
+        static let backUpPortraitOriginals = "backup.portraitOriginals"
     }
 
     @Published var selectedAlbumIDs: Set<String> { didSet { saveAlbumIDs() } }
@@ -45,6 +46,7 @@ final class BackupPreferences: ObservableObject {
     @Published var useQuota: Bool { didSet { defaults.set(useQuota, forKey: Key.useQuota) } }
     @Published var backUpLivePhotoMotion: Bool { didSet { defaults.set(backUpLivePhotoMotion, forKey: Key.backUpLivePhotoMotion) } }
     @Published var albumsFromLibrary: Bool { didSet { defaults.set(albumsFromLibrary, forKey: Key.albumsFromLibrary) } }
+    @Published var backUpPortraitOriginals: Bool { didSet { defaults.set(backUpPortraitOriginals, forKey: Key.backUpPortraitOriginals) } }
 
     private let defaults: UserDefaults
 
@@ -67,6 +69,9 @@ final class BackupPreferences: ObservableObject {
         // Off until asked for, like motion: it creates albums in the user's
         // Google account, which an update should not start doing on its own.
         albumsFromLibrary = defaults.bool(forKey: Key.albumsFromLibrary)
+        // Off until asked for: it adds a second item to Google Photos for every
+        // edited photo with depth, including those already backed up.
+        backUpPortraitOriginals = defaults.bool(forKey: Key.backUpPortraitOriginals)
     }
 
     func toggle(albumID: String) {
