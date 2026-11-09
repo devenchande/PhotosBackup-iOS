@@ -25,6 +25,7 @@ struct SettingsView: View {
             Form {
                 accountSection
                 backupSection
+                keepAliveSection
                 automationSection
                 verifySection
                 supportSection
@@ -234,6 +235,34 @@ struct SettingsView: View {
                "Only works with Count Against Storage Quota off.",
                "Google may keep its old copy: try a few photos and compare your storage."]),
         .init("Pick Photos on Home", "with Allow Re-upload off, checks with Google first, so photos already there show “Already backed up”."),
+    ]
+
+    private var keepAliveSection: some View {
+        Section {
+            Toggle("Keep Running in Background", isOn: $preferences.keepAliveEnabled)
+            if preferences.keepAliveEnabled {
+                Picker("Method", selection: $preferences.keepAliveMode) {
+                    ForEach(KeepAliveMode.allCases) { mode in Text(mode.title).tag(mode) }
+                }
+                Text(preferences.keepAliveMode.detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HelpDisclosure(title: "What this does", points: Self.keepAliveHelp)
+        } header: {
+            Text("Background")
+        }
+    }
+
+    private static let keepAliveHelp: [HelpDisclosure.Point] = [
+        .init("Keep Running in Background", "the backup keeps going after you switch apps or lock the phone.",
+              ["Without it, iOS pauses the app seconds after you leave it.",
+               "Two uploads at a time, until everything is backed up; then the app sleeps again."]),
+        .init("Start it", "with the app open; swiping the app away from the app switcher stops it."),
+        .init("Battery", "it uses more; leaving the phone charging works best.",
+              ["Each run stops itself after 12 hours."]),
+        .init("Turned off", "the screen stays on while a backup runs with the app open, since locking the phone would pause it."),
     ]
 
     private var automationSection: some View {
