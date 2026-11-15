@@ -30,9 +30,10 @@ without a desktop companion or hosted service.
 - Restore pending album uploads after an app restart and remember completed
   library assets per Google account.
 - Show per-album backup progress, and re-upload assets edited after backup.
-- With Allow Re-upload on (off by default), re-upload the selected albums or a
-  folder from the Files app on request, including items already in Google
-  Photos, under the current Storage Saver and storage quota settings.
+- With Allow Re-upload on (off by default), re-upload photos picked one by one,
+  the selected albums, or a folder from the Files app on request, including
+  items already in Google Photos, under the current Storage Saver setting. It
+  is refused while Count Against Storage Quota is on.
 - Back up an edited photo as it looks on the iPhone, the file the Google Photos
   app would upload itself, so Google Photos' Free up space recognises it.
 - With Back Up Video Originals on (off by default), back up an edited video's

@@ -18,6 +18,12 @@ struct SettingsView: View {
     @State private var showReuploadFolderPicker = false
     /// The folder picked for re-upload, held until the user confirms it.
     @State private var reuploadFolder: URL?
+    @State private var showReuploadPhotoPicker = false
+    /// What the picker returned, promoted to `reuploadPhotos` once the picker
+    /// has finished dismissing: a dialog presented mid-dismissal is dropped.
+    @State private var pickedForReupload: [MediaSource] = []
+    /// The photos picked for re-upload, held until the user confirms them.
+    @State private var reuploadPhotos: [MediaSource]?
     private let gpmcURL = URL(string: "https://github.com/xob0t/gpmc")!
 
     var body: some View {
@@ -141,12 +147,29 @@ struct SettingsView: View {
             Toggle("Add to Matching Albums", isOn: $preferences.albumsFromLibrary)
             Toggle("Back Up Portrait Originals", isOn: $preferences.backUpPortraitOriginals)
             Toggle("Back Up Video Originals", isOn: $preferences.backUpVideoOriginals)
+            HelpDisclosure(title: "What these options do", points: Self.backupHelp)
         } header: {
             Text("Backup")
-        } footer: {
-            Text("More simultaneous uploads finish a large backup sooner. Each one stages a full-size copy on the device while it runs, so high values use more storage, battery and data at once — 2 suits most phones. Lowering it lets uploads already running finish first.\n\nStorage Saver asks Google Photos to reduce file size. With Count Against Storage Quota off, uploads identify as an older Pixel phone so they don't use your Google storage; the Google Photos app may then label them “Storage saver” even though the original file was kept. The file size, or Google Photos on the web, shows the real quality.\n\nBack Up Live Photo Motion attaches each Live Photo's motion to its photo, so it plays as a Live Photo in Google Photos and the Google Photos app's Free up space can remove it from this iPhone. It uploads the short video too, a few MB per Live Photo, and uses storage the same way the photo does. Live Photos backed up earlier get their motion added in the background.\n\nAdd to Matching Albums puts each new upload into a Google Photos album with the same name as each of your albums holding it, or for a file from a picked folder, the folder holding it, creating the album the first time. Photos backed up before it was turned on are not moved.\n\nBack Up Portrait Originals also uploads the camera's original of each Portrait photo, and of each photo the camera captured depth for so Portrait can be turned on later, when it has been edited. Google Photos otherwise only gets the edit, with the blur rendered in; the original keeps the depth data, so after downloading it you can change the focus and depth in Photos again. It appears as a separate item in Google Photos. Photos without depth are checked once and not uploaded, and unedited ones already back up with their depth. Photos backed up earlier are checked in the background.\n\nBack Up Video Originals also uploads the camera's original of every edited video, including each Cinematic video, which the camera always saves as edited. The Google Photos app may show a Cinematic video as not backed up until its original is in the account, so its Free up space cannot remove it. Each edited video then appears twice in Google Photos, and some Cinematic originals do not play in the Google Photos iPhone app. Edited videos backed up earlier get their original added in the background.")
         }
     }
+
+    private static let backupHelp: [HelpDisclosure.Point] = [
+        .init("Automatic Backup", "backs up new photos in your selected albums on its own."),
+        .init("Simultaneous Uploads", "how many items upload at once.",
+              ["Each one keeps a full-size copy on the iPhone while it runs; 2 suits most phones."]),
+        .init("Storage Saver", "Google Photos makes files smaller."),
+        .init("Count Against Storage Quota", "off, uploads don't use your Google storage.",
+              ["The Google Photos app may still label them “Storage saver”; the file size shows the real quality."]),
+        .init("Back Up Live Photo Motion", "a Live Photo plays as one in Google Photos, and its Free up space can remove it.",
+              ["A few MB per Live Photo.", "Live Photos backed up earlier get their motion in the background."]),
+        .init("Add to Matching Albums", "puts each upload in a Google Photos album named after its album, or its folder.",
+              ["Photos backed up earlier aren't moved."]),
+        .init("Back Up Portrait Originals", "also uploads the original of an edited Portrait photo, so you can change its focus after downloading it.",
+              ["Only photos with depth are uploaded.", "Each appears as a second item in Google Photos."]),
+        .init("Back Up Video Originals", "also uploads the original of every edited video, including Cinematic ones.",
+              ["Lets the Google Photos app count Cinematic videos as backed up.",
+               "Each edited video appears twice; some Cinematic originals don't play in the Google Photos app."]),
+    ]
 
     private var verifySection: some View {
         Section {
@@ -162,8 +185,32 @@ struct SettingsView: View {
             .disabled(!canVerify)
             Toggle("Allow Re-upload", isOn: $preferences.allowReupload)
             if preferences.allowReupload {
+                if preferences.useQuota {
+                    Label("Turn off Count Against Storage Quota first: re-uploading under it would still use your storage.",
+                          systemImage: "exclamationmark.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button("Re-upload Photos…") { showReuploadPhotoPicker = true }
+                    .disabled(!canReuploadChosen)
+                    .sheet(isPresented: $showReuploadPhotoPicker, onDismiss: {
+                        if !pickedForReupload.isEmpty { reuploadPhotos = pickedForReupload }
+                        pickedForReupload = []
+                    }) {
+                        PhotoPicker { sources in pickedForReupload = sources }.ignoresSafeArea()
+                    }
+                    .confirmationDialog("Upload these photos again?",
+                                        isPresented: Binding(get: { reuploadPhotos != nil },
+                                                             set: { if !$0 { reuploadPhotos = nil } }),
+                                        titleVisibility: .visible, presenting: reuploadPhotos) { photos in
+                        Button("Re-upload") { runReuploadPhotos(photos) }
+                        Button("Cancel", role: .cancel) {}
+                    } message: { photos in
+                        Text("The \(photos.count) item\(photos.count == 1 ? "" : "s") you picked will be uploaded again, including any already in Google Photos.")
+                    }
                 Button("Re-upload Selected Albums") { confirmReupload = true }
-                    .disabled(!canVerify)
+                    .disabled(!canVerify || preferences.useQuota)
                     .confirmationDialog("Upload the selected albums again?", isPresented: $confirmReupload,
                                         titleVisibility: .visible) {
                         Button("Re-upload") { runReupload() }
@@ -172,7 +219,7 @@ struct SettingsView: View {
                         Text("Every photo and video in the selected albums is uploaded again, including ones already in Google Photos. This takes as long and uses as much data as the first backup.")
                     }
                 Button("Re-upload a Folder…") { showReuploadFolderPicker = true }
-                    .disabled(!canReuploadFolder)
+                    .disabled(!canReuploadChosen)
                     .fileImporter(isPresented: $showReuploadFolderPicker, allowedContentTypes: [.folder]) { result in
                         switch result {
                         case .success(let url): reuploadFolder = url
@@ -195,30 +242,48 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            HelpDisclosure(title: "What these options do", points: Self.recheckHelp)
         } header: {
             Text("Re-check")
-        } footer: {
-            Text("Re-check compares your selected albums against Google Photos again. Items still in the cloud finish quickly; anything deleted there is queued for upload again.\n\nAllow Re-upload shows two buttons that send every item in your selected albums, or in a folder from the Files app, again using your current Storage Saver and storage quota settings, even where Google Photos already has it. It is meant for photos that use your Google storage because they were uploaded another way. Google Photos may keep the copy it already has, so try a small album or folder first and compare your storage before and after.")
         }
     }
+
+    private static let recheckHelp: [HelpDisclosure.Point] = [
+        .init("Re-check Backups", "checks your selected albums against Google Photos again.",
+              ["Items still there finish quickly; anything deleted there is uploaded again."]),
+        .init("Allow Re-upload", "shows Re-upload Photos…, Re-upload Selected Albums and Re-upload a Folder….",
+              ["Uploads items again, even ones Google already has, so they can move to the free quota.",
+               "Only helps with Count Against Storage Quota off.",
+               "Google may keep its old copy: try a few photos and compare your storage."]),
+        .init("Pick Photos on Home", "checks with Google first, so photos already there show “Already backed up”.",
+              ["To send them again, use Re-upload Photos…."]),
+    ]
 
     private var automationSection: some View {
         Section {
             ShortcutsSettingsRows()
+            HelpDisclosure(title: "How to set it up", points: Self.shortcutsHelp)
         } header: {
             Text("Shortcuts")
-        } footer: {
-            Text("In the Shortcuts app, create a personal automation — when the iPhone connects to power, at a time of day, or when it joins your home Wi-Fi — set it to run immediately, and add Back Up Photos. Each run has about 30 seconds: it finds new photos in the selected albums and hands them to iOS to upload in the background. It runs even with Automatic Backup off, and still follows Use Connection and Pause. Photos stored only in iCloud wait until the app is open.")
         }
     }
+
+    private static let shortcutsHelp: [HelpDisclosure.Point] = [
+        .init("Create an automation", "in the Shortcuts app, under Automation → Personal Automation.",
+              ["Trigger it when the iPhone charges, at a time of day, or on your home Wi-Fi.",
+               "Set it to Run Immediately and add Back Up Photos."]),
+        .init("Each run", "has about 30 seconds to find new photos and hand them to iOS to upload."),
+        .init("Rules", "it runs even with Automatic Backup off, and still follows Use Connection and Pause."),
+        .init("iCloud", "photos stored only in iCloud wait until the app is open."),
+    ]
 
     private var canVerify: Bool {
         account.status.isUsable && !isVerifying && !preferences.selectedAlbumIDs.isEmpty
     }
 
-    /// A folder needs no album selection.
-    private var canReuploadFolder: Bool {
-        account.status.isUsable && !isVerifying
+    /// Picked photos and folders need no album selection.
+    private var canReuploadChosen: Bool {
+        account.status.isUsable && !isVerifying && !preferences.useQuota
     }
 
     private func runVerification() {
@@ -232,8 +297,13 @@ struct SettingsView: View {
         }
     }
 
+    private func runReuploadPhotos(_ photos: [MediaSource]) {
+        guard canReuploadChosen else { return }
+        verifyMessage = DashboardView.message(for: automaticBackup.reuploadPhotos(photos))
+    }
+
     private func runReuploadFolder(_ folder: URL) {
-        guard canReuploadFolder else { return }
+        guard canReuploadChosen else { return }
         isVerifying = true
         verifyMessage = nil
         Task {
@@ -304,6 +374,52 @@ struct SettingsView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
         return "\(version) (\(build))"
+    }
+}
+
+/// A collapsed help row, the desktop app's "What these options do": a short
+/// point per option, some with detail beneath, shown only when tapped open.
+struct HelpDisclosure: View {
+    struct Point {
+        let title: String
+        let text: String
+        let details: [String]
+        init(_ title: String, _ text: String, _ details: [String] = []) {
+            self.title = title; self.text = text; self.details = details
+        }
+    }
+
+    let title: String
+    let points: [Point]
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(points.enumerated()), id: \.offset) { _, point in
+                    VStack(alignment: .leading, spacing: 4) {
+                        bullet("•", Text(point.title + ":").bold().foregroundColor(.primary) + Text(" " + point.text))
+                        ForEach(Array(point.details.enumerated()), id: \.offset) { _, detail in
+                            bullet("◦", Text(detail)).padding(.leading, 14)
+                        }
+                    }
+                }
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .padding(.vertical, 4)
+        } label: {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(.tint)
+        }
+    }
+
+    private func bullet(_ mark: String, _ text: Text) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(mark)
+            text.fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -700,10 +700,15 @@ final class AutomaticBackupCoordinator: ObservableObject {
     /// "Re-upload Selected Albums". Uploads the selection again even where
     /// Google already holds the files, so existing backups are committed under
     /// the storage settings in force now.
+    /// Whether a re-upload may run: Allow Re-upload is on, and uploads do not
+    /// count against storage quota. Under quota a re-upload is committed as a
+    /// device that uses storage, which is what it exists to get away from, so
+    /// it is refused like the desktop app refuses it. The buttons are hidden or
+    /// disabled in both cases; this keeps any other caller from starting one.
+    var canReupload: Bool { preferences.allowReupload && !preferences.useQuota }
+
     func reuploadSelectedAlbums() async -> ManualRunOutcome {
-        // The button is hidden while Allow Re-upload is off; this keeps any
-        // other caller from starting one.
-        guard preferences.allowReupload else { return noteManual(.reupload, .nothingToDo) }
+        guard canReupload else { return noteManual(.reupload, .nothingToDo) }
         guard !preferences.selectedAlbumIDs.isEmpty else { return noteManual(.reupload, .noAlbumsSelected) }
         await albums.refresh()
         guard albums.canRead else { return noteManual(.reupload, .noLibraryAccess) }
@@ -723,13 +728,26 @@ final class AutomaticBackupCoordinator: ObservableObject {
     /// uploaded and committed again under the current settings. The folder is
     /// remembered like one picked from Home, so a re-pick keeps its keys.
     func reuploadFolder(_ folderURL: URL) async throws -> ManualRunOutcome {
-        guard preferences.allowReupload else { return noteManual(.reupload, .nothingToDo) }
+        guard canReupload else { return noteManual(.reupload, .nothingToDo) }
         // Walks the whole tree, so it runs off the main actor.
         let sources = try await Task.detached(priority: .userInitiated) {
             try FolderScanner.sources(inPickedFolder: folderURL)
         }.value
         guard !sources.isEmpty else { return noteManual(.reupload, .nothingToDo) }
         // Same reason as Re-check: a failed row would otherwise block its source.
+        queue.retryRetryableFailures()
+        let total = queue.reupload(sources)
+        guard total > 0 else { return noteManual(.reupload, .nothingToDo) }
+        startForegroundRun(sources, source: .reupload)
+        return .reuploading(count: total)
+    }
+
+    /// "Re-upload Photos": the same forced upload for photos and videos picked
+    /// one by one. Pick Photos on Home checks with Google first, so an item
+    /// already there settles as already backed up; this is the way to send
+    /// chosen items again.
+    func reuploadPhotos(_ sources: [MediaSource]) -> ManualRunOutcome {
+        guard canReupload, !sources.isEmpty else { return noteManual(.reupload, .nothingToDo) }
         queue.retryRetryableFailures()
         let total = queue.reupload(sources)
         guard total > 0 else { return noteManual(.reupload, .nothingToDo) }
