@@ -42,7 +42,7 @@ jobs:
       - name: Build unsigned IPA
         run: Scripts/make-ipa.sh
 
-      # Name the IPA after the version it carries (PhotosBackup-0.3.10.ipa), so
+      # Name the IPA after the version it carries (PhotosBackup-iOS-0.3.10.ipa), so
       # a downloaded file says which build it is. The version comes from
       # project.yml, the value baked into the app; on a release it must match
       # the tag, or the IPA would be attached under a version it is not.
@@ -57,7 +57,7 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match MARKETING_VERSION $version in project.yml"
             exit 1
           fi
-          ipa="build/PhotosBackup-$version.ipa"
+          ipa="build/PhotosBackup-iOS-$version.ipa"
           mv build/PhotosBackup.ipa "$ipa"
           echo "IPA=$ipa" >> "$GITHUB_ENV"
           echo "Named the IPA $ipa"

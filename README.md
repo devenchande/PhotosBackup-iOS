@@ -88,7 +88,7 @@ Every push and pull request runs the suite on an iPhone simulator: 191 tests,
 Each release's `.ipa` is built by GitHub Actions from the tagged commit and
 attached with its SHA-256, so the binary can be checked against the source it
 claims to come from. The file is named after its version, for example
-`PhotosBackup-0.3.10.ipa`.
+`PhotosBackup-iOS-0.3.10.ipa`.
 
 ### App identity (since 0.0.2)
 
