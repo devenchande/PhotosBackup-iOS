@@ -81,9 +81,18 @@ struct DashboardView: View {
     /// remembers them as backed up: picking one is how someone asks "is this
     /// really backed up?", and the hash lookup settles it without re-uploading
     /// anything Google already has.
+    ///
+    /// With Allow Re-upload on, picking is instead how someone sends items
+    /// again: they are uploaded with the duplicate check skipped, like
+    /// Re-upload Selected Albums. Picking is already a deliberate choice and the
+    /// setting an opt-in, so there is no second confirmation.
     private func enqueue(_ sources: [MediaSource]) {
         guard !sources.isEmpty else { return }
-        queue.reverify(sources)
+        if automaticBackup.canReupload {
+            manualRunMessage = DashboardView.message(for: automaticBackup.reuploadPhotos(sources))
+        } else {
+            queue.reverify(sources)
+        }
     }
 
     @ViewBuilder private var accountBanner: some View {
@@ -229,7 +238,9 @@ struct DashboardView: View {
     private var photoPickerAction: some View {
         let enabled = account.status.isUsable
         return Button { showPicker = true } label: {
-            quickActionLabel(symbol: "photo.badge.plus", title: "Pick Photos", detail: "Manual backup", isEnabled: enabled)
+            quickActionLabel(symbol: "photo.badge.plus", title: "Pick Photos",
+                             detail: automaticBackup.canReupload ? "Re-uploads picked items" : "Manual backup",
+                             isEnabled: enabled)
         }
         .disabled(!enabled)
     }

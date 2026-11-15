@@ -18,12 +18,6 @@ struct SettingsView: View {
     @State private var showReuploadFolderPicker = false
     /// The folder picked for re-upload, held until the user confirms it.
     @State private var reuploadFolder: URL?
-    @State private var showReuploadPhotoPicker = false
-    /// What the picker returned, promoted to `reuploadPhotos` once the picker
-    /// has finished dismissing: a dialog presented mid-dismissal is dropped.
-    @State private var pickedForReupload: [MediaSource] = []
-    /// The photos picked for re-upload, held until the user confirms them.
-    @State private var reuploadPhotos: [MediaSource]?
     private let gpmcURL = URL(string: "https://github.com/xob0t/gpmc")!
 
     var body: some View {
@@ -192,23 +186,6 @@ struct SettingsView: View {
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Button("Re-upload Photos…") { showReuploadPhotoPicker = true }
-                    .disabled(!canReuploadChosen)
-                    .sheet(isPresented: $showReuploadPhotoPicker, onDismiss: {
-                        if !pickedForReupload.isEmpty { reuploadPhotos = pickedForReupload }
-                        pickedForReupload = []
-                    }) {
-                        PhotoPicker { sources in pickedForReupload = sources }.ignoresSafeArea()
-                    }
-                    .confirmationDialog("Upload these photos again?",
-                                        isPresented: Binding(get: { reuploadPhotos != nil },
-                                                             set: { if !$0 { reuploadPhotos = nil } }),
-                                        titleVisibility: .visible, presenting: reuploadPhotos) { photos in
-                        Button("Re-upload") { runReuploadPhotos(photos) }
-                        Button("Cancel", role: .cancel) {}
-                    } message: { photos in
-                        Text("The \(photos.count) item\(photos.count == 1 ? "" : "s") you picked will be uploaded again, including any already in Google Photos.")
-                    }
                 Button("Re-upload Selected Albums") { confirmReupload = true }
                     .disabled(!canVerify || preferences.useQuota)
                     .confirmationDialog("Upload the selected albums again?", isPresented: $confirmReupload,
@@ -251,12 +228,12 @@ struct SettingsView: View {
     private static let recheckHelp: [HelpDisclosure.Point] = [
         .init("Re-check Backups", "checks your selected albums against Google Photos again.",
               ["Items still there finish quickly; anything deleted there is uploaded again."]),
-        .init("Allow Re-upload", "shows Re-upload Photos…, Re-upload Selected Albums and Re-upload a Folder….",
-              ["Uploads items again, even ones Google already has, so they can move to the free quota.",
-               "Only helps with Count Against Storage Quota off.",
+        .init("Allow Re-upload", "uploads items again, even ones Google already has, so they can move to the free quota.",
+              ["Pick Photos on Home then re-uploads what you pick.",
+               "Shows Re-upload Selected Albums and Re-upload a Folder….",
+               "Only works with Count Against Storage Quota off.",
                "Google may keep its old copy: try a few photos and compare your storage."]),
-        .init("Pick Photos on Home", "checks with Google first, so photos already there show “Already backed up”.",
-              ["To send them again, use Re-upload Photos…."]),
+        .init("Pick Photos on Home", "with Allow Re-upload off, checks with Google first, so photos already there show “Already backed up”."),
     ]
 
     private var automationSection: some View {
@@ -281,7 +258,7 @@ struct SettingsView: View {
         account.status.isUsable && !isVerifying && !preferences.selectedAlbumIDs.isEmpty
     }
 
-    /// Picked photos and folders need no album selection.
+    /// A folder needs no album selection.
     private var canReuploadChosen: Bool {
         account.status.isUsable && !isVerifying && !preferences.useQuota
     }
@@ -295,11 +272,6 @@ struct SettingsView: View {
             isVerifying = false
             verifyMessage = DashboardView.message(for: outcome)
         }
-    }
-
-    private func runReuploadPhotos(_ photos: [MediaSource]) {
-        guard canReuploadChosen else { return }
-        verifyMessage = DashboardView.message(for: automaticBackup.reuploadPhotos(photos))
     }
 
     private func runReuploadFolder(_ folder: URL) {

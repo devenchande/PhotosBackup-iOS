@@ -742,10 +742,10 @@ final class AutomaticBackupCoordinator: ObservableObject {
         return .reuploading(count: total)
     }
 
-    /// "Re-upload Photos": the same forced upload for photos and videos picked
-    /// one by one. Pick Photos on Home checks with Google first, so an item
-    /// already there settles as already backed up; this is the way to send
-    /// chosen items again.
+    /// Pick Photos on Home while re-upload is allowed: the same forced upload
+    /// for photos and videos picked one by one. Otherwise Pick Photos checks
+    /// with Google first, and an item already there settles as already backed
+    /// up without being sent.
     func reuploadPhotos(_ sources: [MediaSource]) -> ManualRunOutcome {
         guard canReupload, !sources.isEmpty else { return noteManual(.reupload, .nothingToDo) }
         queue.retryRetryableFailures()
