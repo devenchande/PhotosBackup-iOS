@@ -37,6 +37,8 @@ final class BackupPreferences: ObservableObject {
         static let backUpPortraitOriginals = "backup.portraitOriginals"
         static let backUpVideoOriginals = "backup.videoOriginals"
         static let allowReupload = "backup.allowReupload"
+        static let keepAliveEnabled = "backup.keepAlive.enabled"
+        static let keepAliveMode = "backup.keepAlive.mode"
     }
 
     @Published var selectedAlbumIDs: Set<String> { didSet { saveAlbumIDs() } }
@@ -51,6 +53,10 @@ final class BackupPreferences: ObservableObject {
     @Published var backUpPortraitOriginals: Bool { didSet { defaults.set(backUpPortraitOriginals, forKey: Key.backUpPortraitOriginals) } }
     @Published var backUpVideoOriginals: Bool { didSet { defaults.set(backUpVideoOriginals, forKey: Key.backUpVideoOriginals) } }
     @Published var allowReupload: Bool { didSet { defaults.set(allowReupload, forKey: Key.allowReupload) } }
+    /// Keep the app running in the background while work is queued. See
+    /// `BackgroundKeepAlive`.
+    @Published var keepAliveEnabled: Bool { didSet { defaults.set(keepAliveEnabled, forKey: Key.keepAliveEnabled) } }
+    @Published var keepAliveMode: KeepAliveMode { didSet { defaults.set(keepAliveMode.rawValue, forKey: Key.keepAliveMode) } }
 
     private let defaults: UserDefaults
 
@@ -84,6 +90,11 @@ final class BackupPreferences: ObservableObject {
         // much time and data as the first backup, with no proof yet that Google
         // re-counts their storage. Off, its buttons are hidden.
         allowReupload = defaults.bool(forKey: Key.allowReupload)
+        // On unless turned off: without it iOS suspends the app seconds after
+        // it leaves the foreground, which is the most reported problem. Silent
+        // audio needs no permission, and it stops once the queue cannot move.
+        keepAliveEnabled = defaults.object(forKey: Key.keepAliveEnabled) as? Bool ?? true
+        keepAliveMode = KeepAliveMode(rawValue: defaults.string(forKey: Key.keepAliveMode) ?? "") ?? .audio
     }
 
     func toggle(albumID: String) {
