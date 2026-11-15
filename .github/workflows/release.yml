@@ -42,19 +42,38 @@ jobs:
       - name: Build unsigned IPA
         run: Scripts/make-ipa.sh
 
+      # Name the IPA after the version it carries (PhotosBackup-0.3.10.ipa), so
+      # a downloaded file says which build it is. The version comes from
+      # project.yml, the value baked into the app; on a release it must match
+      # the tag, or the IPA would be attached under a version it is not.
+      - name: Name the IPA after its version
+        run: |
+          version=$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' project.yml | head -n 1)
+          if [ -z "$version" ]; then
+            echo "::error::Could not read MARKETING_VERSION from project.yml"
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" = "release" ] && [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match MARKETING_VERSION $version in project.yml"
+            exit 1
+          fi
+          ipa="build/PhotosBackup-$version.ipa"
+          mv build/PhotosBackup.ipa "$ipa"
+          echo "IPA=$ipa" >> "$GITHUB_ENV"
+          echo "Named the IPA $ipa"
+
       - name: Checksum
         run: |
-          shasum -a 256 build/PhotosBackup.ipa | awk '{print $1}' > build/PhotosBackup.ipa.sha256
-          echo "sha256: $(cat build/PhotosBackup.ipa.sha256)"
+          shasum -a 256 "$IPA" | awk '{print $1}' > "$IPA.sha256"
+          echo "sha256: $(cat "$IPA.sha256")"
 
       - name: Attach IPA and checksum to the release
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "$GITHUB_REF_NAME" \
-            build/PhotosBackup.ipa build/PhotosBackup.ipa.sha256 --clobber
-          echo "Attached to release $GITHUB_REF_NAME"
+          gh release upload "$GITHUB_REF_NAME" "$IPA" "$IPA.sha256" --clobber
+          echo "Attached $IPA to release $GITHUB_REF_NAME"
 
       - name: Upload workflow artifact (manual runs)
         if: github.event_name == 'workflow_dispatch'
@@ -62,6 +81,6 @@ jobs:
         with:
           name: PhotosBackup-ipa
           path: |
-            build/PhotosBackup.ipa
-            build/PhotosBackup.ipa.sha256
+            ${{ env.IPA }}
+            ${{ env.IPA }}.sha256
           if-no-files-found: error
